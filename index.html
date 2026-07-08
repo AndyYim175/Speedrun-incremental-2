@@ -1,0 +1,1458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convergent Grid Puzzle Game</title>
+  
+  <!-- Load Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Load Space Mono Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      border-radius: 0px !important; /* STRICT MINIMALIST BRUTALIST NO ROUND CORNERS */
+    }
+    body {
+      font-family: 'Space Mono', monospace;
+      background-color: #030303;
+      overflow: hidden;
+    }
+    
+    /* ANIMATING STRIPE PATTERNS FOR BACKGROUND VISUALS */
+    @keyframes scrollStripes {
+      0% { background-position: 0 0; }
+      100% { background-position: 40px 40px; }
+    }
+
+    /* Locked state background */
+    .pattern-locked {
+      background-color: #0b0b0c;
+      background-image: linear-gradient(
+        45deg, 
+        #121214 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        #121214 50%, 
+        #121214 75%, 
+        transparent 75%, 
+        transparent
+      );
+      background-size: 20px 20px;
+      animation: scrollStripes 8s linear infinite;
+    }
+
+    /* Can-buy state background */
+    .pattern-can-buy {
+      background-color: #1e1b10;
+      background-image: linear-gradient(
+        45deg, 
+        #2c2415 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        #2c2415 50%, 
+        #2c2415 75%, 
+        transparent 75%, 
+        transparent
+      );
+      background-size: 20px 20px;
+      animation: scrollStripes 4s linear infinite;
+    }
+
+    /* Bought state background */
+    .pattern-bought {
+      background-color: #061a12;
+      background-image: linear-gradient(
+        45deg, 
+        #0a281c 25%, 
+        transparent 25%, 
+        transparent 50%, 
+        #0a281c 50%, 
+        #0a281c 75%, 
+        transparent 75%, 
+        transparent
+      );
+      background-size: 20px 20px;
+      animation: scrollStripes 10s linear infinite;
+    }
+
+    /* Subtle active flashing overlay class */
+    .flash-active {
+      animation: screenFlash 0.15s ease-out;
+    }
+    @keyframes screenFlash {
+      0% { opacity: 0.6; background-color: rgba(16, 185, 129, 0.3); }
+      100% { opacity: 0; background-color: transparent; }
+    }
+
+    /* Drawing overlay canvas */
+    #doodle-canvas {
+      image-rendering: pixelated;
+    }
+
+    /* Custom scrollbar for minimalist menus */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #09090b;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+    }
+  </style>
+</head>
+<body class="w-screen h-screen flex flex-col justify-between text-zinc-100 overflow-hidden select-none">
+
+  <!-- TOP CONTROL HEADER BAR -->
+  <header class="w-full bg-black border-b border-zinc-800 p-3 flex justify-between items-center z-40">
+    <div class="flex items-center space-x-3">
+      <select id="stage-jumper" class="bg-zinc-900 border border-zinc-800 text-xs text-zinc-200 font-bold px-2 py-1 focus:outline-none">
+        <option value="1">STAGE 1: Beginning</option>
+        <option value="2">STAGE 2: Timer</option>
+        <option value="3">STAGE 3: Energy</option>
+        <option value="4">STAGE 4: Tied upgrades</option>
+        <option value="5">STAGE 5: Overlapping Ties</option>
+        <option value="6">STAGE 6: Inflating Upgrades</option>
+        <option value="7">STAGE 7: Final Puzzle</option>
+      </select>
+      
+      <!-- SPEED WARP CONTROLLER PANEL -->
+      <div id="speed-controls" class="flex items-center space-x-1 border border-zinc-800 p-[2px] bg-zinc-950">
+        <button id="speed-05" class="px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-transparent hover:text-white transition-colors">0.5x</button>
+        <button id="speed-10" class="px-2 py-0.5 text-[10px] font-bold text-black bg-amber-500">1.0x</button>
+        <button id="speed-20" class="px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-transparent hover:text-white transition-colors">2.0x</button>
+      </div>
+    </div>
+
+    <!-- Right Header Controls -->
+    <div class="flex items-center space-x-2">
+      <button id="reset-stage-btn" class="border border-zinc-800 hover:border-red-600 hover:text-red-400 text-xs font-bold px-3 py-1 bg-zinc-950 transition-all flex items-center space-x-1">
+        <span>RESET STAGE</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN GRAPHICAL VIEWPORT CONTAINER -->
+  <main id="viewport-container" class="relative flex-grow w-full bg-[#050505] overflow-hidden cursor-grab active:cursor-grabbing">
+    
+    <!-- INFINITE VIRTUAL GRID LAYER -->
+    <div id="grid-wrapper" class="absolute origin-center select-none" style="width: 600px; height: 600px; left: 50%; top: 50%; margin-left: -300px; margin-top: -300px;">
+      
+      <!-- DYNAMIC GRID SQUARES -->
+      <div id="squares-grid" class="absolute inset-[30px] grid grid-cols-4 grid-rows-4 gap-4 z-10 select-none">
+        <!-- 16 custom card panels injected by script -->
+      </div>
+
+      <!-- SVG KILLER SUDOKU CAGES CONNECTIONS (Rendered on top of upgrades grid) -->
+      <svg id="svg-cages-layer" class="absolute inset-0 w-full h-full pointer-events-none z-25" style="position: absolute; pointer-events: none; z-index: 25;" xmlns="http://www.w3.org/2000/svg">
+        <!-- Rendered bounding boxes go here dynamically -->
+      </svg>
+
+      <!-- FREEFORM DRAWING STRATEGY OVERLAY -->
+      <canvas id="doodle-canvas" width="600" height="600" class="absolute inset-0 pointer-events-none z-30"></canvas>
+    </div>
+
+    <!-- FLASH LAYER FEEDBACK -->
+    <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-30 transition-opacity opacity-0"></div>
+
+    <!-- HUD TEXT OVERLAY (FLOAT BOTTOM-LEFT, NO BACKGROUND OBSTRUCTIONS) -->
+    <div id="hud-stats-overlay" class="absolute bottom-5 left-5 z-40 pointer-events-none space-y-1">
+      <div class="text-sm font-bold tracking-wider text-zinc-500" id="hud-status-mode">PLANNING MODE</div>
+      <div class="text-xl font-black text-white" id="hud-points-display">Points: 0 (+0.0/s)</div>
+      <div class="text-sm text-zinc-400 hidden" id="hud-energy-display">Energy: 0 (+0.0/s) [Boost: x1.00]</div>
+      <div class="text-sm text-red-500 font-bold hidden" id="hud-timer-display">Time remaining: 60.00s</div>
+    </div>
+
+    <!-- ACCESSIBILITY CAMERA ADJUSTER CONSOLE -->
+    <div class="absolute bottom-5 right-5 z-40 flex space-x-1 bg-black/60 border border-zinc-800 p-1">
+      <button id="zoom-in" class="w-8 h-8 flex items-center justify-center text-xs font-black text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Zoom In">+</button>
+      <button id="zoom-out" class="w-8 h-8 flex items-center justify-center text-xs font-black text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Zoom Out">-</button>
+      <button id="zoom-center" class="px-2 h-8 flex items-center justify-center text-[10px] font-bold text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Recenter Camera">RECENTER</button>
+    </div>
+
+  </main>
+
+  <!-- STRATEGY PLANNING TOOLBAR (SLIDES UP FROM BOTTOM) -->
+  <footer id="planning-toolbar" class="w-full bg-black border-t border-zinc-800 p-4 flex flex-col items-center justify-center space-y-3 z-40 transition-transform duration-300 relative">
+    
+    <!-- PEN SETTINGS SUB-MENU (POPS UP IN PEN MODE) -->
+    <div id="pen-submenu" class="flex items-center space-x-4 bg-zinc-950 border border-zinc-800 px-3 py-1.5 transition-all duration-200 hidden">
+      <!-- Weight Configs -->
+      <div class="flex items-center space-x-1 border-r border-zinc-800 pr-3">
+        <span class="text-[9px] text-zinc-500 font-bold mr-1 font-mono">PENCIL:</span>
+        <button id="weight-thin" class="w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-zinc-900 text-zinc-300">1</button>
+        <button id="weight-medium" class="w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-transparent text-zinc-500">2</button>
+        <button id="weight-thick" class="w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-transparent text-zinc-500">3</button>
+      </div>
+      <!-- Color Configs -->
+      <div class="flex items-center space-x-1.5">
+        <span class="text-[9px] text-zinc-500 font-bold mr-1 font-mono">COLOR:</span>
+        <button data-color="#ef4444" class="w-4 h-4 bg-red-500 border-2 border-white" title="Red"></button>
+        <button data-color="#f97316" class="w-4 h-4 bg-orange-500 border-2 border-transparent" title="Orange"></button>
+        <button data-color="#10b981" class="w-4 h-4 bg-emerald-500 border-2 border-transparent" title="Emerald"></button>
+        <button data-color="#3b82f6" class="w-4 h-4 bg-blue-500 border-2 border-transparent" title="Blue"></button>
+        <button data-color="#ffffff" class="w-4 h-4 bg-white border-2 border-transparent" title="White"></button>
+      </div>
+    </div>
+
+    <!-- MAIN BUTTON ACTIONS ROW -->
+    <div class="flex items-center space-x-3">
+      <!-- Drag Button -->
+      <button id="tool-drag" class="w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow" title="Drag Canvas">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      </button>
+
+      <!-- Note / Pen Button -->
+      <button id="tool-note" class="w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow" title="Scribble Strategy Notes">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </button>
+
+      <!-- Clear Canvas Button -->
+      <button id="tool-clear" class="w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow" title="Clear All Drawings">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
+
+      <!-- GREEN EXECUTE RUN BUTTON (Square with Play Arrow Icon) -->
+      <button id="execute-run-btn" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-black flex items-center justify-center transition-all shadow" title="Execute Strategy Run!">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- STAGE BRIEFING ALERT OVERLAY (MINIMAL TERMINAL OVERLAY) -->
+  <div id="briefing-overlay" class="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-6 hidden">
+    <div class="max-w-2xl w-full bg-zinc-950 border border-zinc-800 p-8 space-y-6 shadow-2xl">
+      <div class="flex justify-between items-center border-b border-zinc-800 pb-3">
+        <span class="text-xs font-bold text-amber-500 tracking-widest font-mono">Game update</span>
+        <span class="text-[10px] text-zinc-500 font-mono">Good luck!</span>
+      </div>
+      <div id="briefing-content" class="text-sm leading-relaxed text-zinc-300 space-y-4 font-mono">
+        <!-- Text injected based on Stage selection -->
+      </div>
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4 border-t border-zinc-900">
+        <!-- Fancy Custom Checkbox -->
+        <label class="flex items-center space-x-3 cursor-pointer group">
+          <input type="checkbox" id="dont-show-checkbox" class="hidden">
+          <div id="dont-show-box" class="w-5 h-5 border border-zinc-800 bg-zinc-950 flex items-center justify-center transition-all group-hover:border-amber-500">
+            <span id="dont-show-tick" class="text-amber-500 text-xs font-bold hidden">✓</span>
+          </div>
+          <span class="text-[10px] text-zinc-500 group-hover:text-zinc-300 font-mono tracking-wider transition-colors uppercase">Don't show again</span>
+        </label>
+        
+        <button id="close-briefing-btn" class="bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs px-6 py-2.5 transition-colors">
+          Proceed
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VICTORY CELEBRATION OVERLAY -->
+  <div id="victory-overlay" class="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center p-6 hidden">
+    <div class="max-w-md w-full bg-zinc-950 border border-zinc-800 p-8 space-y-6 text-center shadow-2xl">
+      <h2 class="text-2xl font-black text-emerald-500 tracking-widest font-mono">Stage Clear!</h2>
+      <p id="victory-message" class="text-xs text-zinc-400 leading-relaxed font-mono">All 16 upgrades are bought in time. Next level!</p>
+      <button id="next-stage-btn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs py-3 transition-all font-mono">
+        Next stage
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Core Game States
+    const state = {
+      activeStage: 1,
+      unlockedStageMax: 1,
+      points: 0,
+      energy: 0,
+      timer: 60.0,
+      timerActive: false,
+      gameSpeed: 1.0,
+      
+      // Upgrade metrics
+      upgrades: [],
+      ropes: [],
+      
+      // Drawing canvas tracking
+      drawMode: 'drag', // 'drag' or 'note'
+      penColor: '#ef4444',
+      penWeight: 2,
+      isDrawing: false,
+      
+      // Camera Transform Variables
+      camX: 0,
+      camY: 0,
+      camZoom: 1.0,
+      isPanning: false,
+      panStartX: 0,
+      panStartY: 0,
+
+      planningMode: true,
+      dismissedStages: {} // Tracks "Do not show this tip again" selections in memory
+    };
+
+    // Canvas drawing path database (persisted across resets)
+    let savedDrawings = []; 
+
+    // HTML Cache Queries
+    const viewportContainer = document.getElementById('viewport-container');
+    const gridWrapper = document.getElementById('grid-wrapper');
+    const squaresGrid = document.getElementById('squares-grid');
+    const svgCagesLayer = document.getElementById('svg-cages-layer');
+    const doodleCanvas = document.getElementById('doodle-canvas');
+    const ctx = doodleCanvas.getContext('2d');
+    const flashOverlay = document.getElementById('flash-overlay');
+
+    const hudStatusMode = document.getElementById('hud-status-mode');
+    const hudPointsDisplay = document.getElementById('hud-points-display');
+    const hudEnergyDisplay = document.getElementById('hud-energy-display');
+    const hudTimerDisplay = document.getElementById('hud-timer-display');
+
+    const planningToolbar = document.getElementById('planning-toolbar');
+    const penSubmenu = document.getElementById('pen-submenu');
+    const toolDrag = document.getElementById('tool-drag');
+    const toolNote = document.getElementById('tool-note');
+    const toolClear = document.getElementById('tool-clear');
+    const executeRunBtn = document.getElementById('execute-run-btn');
+    const resetStageBtn = document.getElementById('reset-stage-btn');
+    const stageJumper = document.getElementById('stage-jumper');
+
+    const briefingOverlay = document.getElementById('briefing-overlay');
+    const briefingContent = document.getElementById('briefing-content');
+    const closeBriefingBtn = document.getElementById('close-briefing-btn');
+    const dontShowCheckbox = document.getElementById('dont-show-checkbox');
+    const dontShowBox = document.getElementById('dont-show-box');
+    const dontShowTick = document.getElementById('dont-show-tick');
+
+    const victoryOverlay = document.getElementById('victory-overlay');
+    const victoryMessage = document.getElementById('victory-message');
+    const nextStageBtn = document.getElementById('next-stage-btn');
+
+    // Synth Audio Context
+    let audioCtx = null;
+    let lastSecondTick = 0;
+
+    function initSynth() {
+      if (audioCtx) return;
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      } catch (e) {
+        console.error("Audio system blocked by browser policy.", e);
+      }
+    }
+
+    function playBeep(freq, type = 'sine', duration = 0.1, gainVal = 0.1) {
+      initSynth();
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        
+        gainNode.gain.setValueAtTime(gainVal, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    // Unique chime for timer extensions
+    function playTimeAddChime() {
+      playBeep(440, 'sine', 0.2, 0.08);
+      setTimeout(() => playBeep(659.25, 'sine', 0.25, 0.08), 80);
+      setTimeout(() => playBeep(880, 'sine', 0.4, 0.1), 160);
+    }
+
+    // Dynamic warning alert
+    function playWarningTick() {
+      playBeep(260, 'square', 0.05, 0.04);
+    }
+
+    const STAGE_CONFIGS = {
+      1: {
+        title: "The Basics",
+        objective: "Acquire all 16 upgrades to complete Stage 1. No timers or restrictions here; learn point mechanics.",
+        hasTimer: false,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1 point/s. FREE" },
+          { id: 2, baseCost: 3, addPoints: 1, desc: "+1 point/s. 3pts." },
+          { id: 3, baseCost: 18, addPoints: 1, desc: "+1 point/s. 18pts." },
+          { id: 4, baseCost: 24, addPoints: 1, desc: "+1 point/s. 24pts." },
+          { id: 5, baseCost: 5, addPoints: 1, desc: "+1 point/s. 5pts." },
+          { id: 6, baseCost: 10, multPoints: 2, desc: "Double point gain. 10pts." },
+          { id: 7, baseCost: 50, addPoints: 2, desc: "+2 point/s. 50pts." },
+          { id: 8, baseCost: 360, addPoints: 5, desc: "+5 point/s. 360pts." },
+          { id: 9, baseCost: 65, addPoints: 3, desc: "+3 point/s. 65pts." },
+          { id: 10, baseCost: 600, multPoints: 1.25, desc: "Multiply point gain by 1.25. 600pts." },
+          { id: 11, baseCost: 1000, multPoints: 1.25, desc: "Multiply point gain by 1.25. 1000pts." },
+          { id: 12, baseCost: 1500, multPoints: 2, desc: "Multiply point gain by 2.0. 1500pts." },
+          { id: 13, baseCost: 120, multPoints: 2, desc: "Double point gain. 120pts." },
+          { id: 14, baseCost: 240, addPoints: 5, desc: "+5 point/s. 240pts." },
+          { id: 15, baseCost: 6000, multPoints: 4, desc: "Multiply point gain by 4.0. 6000pts." },
+          { id: 16, baseCost: 20000, desc: "Final core alignment step. 20000pts." }
+        ],
+        ropes: []
+      },
+      2: {
+        title: "The Sprint",
+        objective: "Manage your point generation carefully to purchase and unlock all 16 items within the 60s countdown constraint.",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1pt/s. FREE" },
+          { id: 2, baseCost: 12, addPoints: 2, desc: "+2pt/s. 12pts." },
+          { id: 3, baseCost: 25, multPoints: 2, desc: "Double points. 25pts." },
+          { id: 4, baseCost: 75, addPoints: 3, desc: "+3pt/s. 75pts." },
+          { id: 5, baseCost: 3, addPoints: 1, desc: "+1pt/s. 3pts." },
+          { id: 6, baseCost: 5, addPoints: 1, desc: "+1pt/s. 5pts." },
+          { id: 7, baseCost: 65, addPoints: 2, desc: "+2pt/s. 65pts." },
+          { id: 8, baseCost: 120, addPoints: 5, desc: "+5pt/s. 120pts." },
+          { id: 9, baseCost: 150, addPoints: 5, desc: "+5pt/s. 150pts." },
+          { id: 10, baseCost: 300, addTime: 10, desc: "+10s to timer. 300pts." },
+          { id: 11, baseCost: 150, addPoints: 6, desc: "+6pt/s. 150pts." },
+          { id: 12, baseCost: 750, multPoints: 2, desc: "Double points. 750pts." },
+          { id: 13, baseCost: 250, addPoints: 9, desc: "+9pt/s. 250pts." },
+          { id: 14, baseCost: 300, desc: "Points boost itself at a rate of (pts/25+1)^0.2. 300pts." },
+          { id: 15, baseCost: 1200, addTime: 3, desc: "+3s to timer. 1200pts." },
+          { id: 16, baseCost: 1500, desc: "Get this upgrade. 1500pts." }
+        ],
+        ropes: []
+      },
+      3: {
+        title: "The Battery",
+        objective: "Manage Energy generation units and use the compound energy boost to multiply point generation speed.",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1pt/s. FREE" },
+          { id: 2, baseCost: 12, addPoints: 2, desc: "+2pt/s. 12pts." },
+          { id: 3, baseCost: 30, addEnergy: 1, desc: "+1 energy/s. 30pts." },
+          { id: 4, baseCost: 45, addEnergy: 3, desc: "+3 energy/s. 45pts." },
+          { id: 5, baseCost: 3, addPoints: 1, desc: "+1pt/s. 3pts." },
+          { id: 6, baseCost: 5, addPoints: 1, desc: "+1pt/s. 5pts." },
+          { id: 7, baseCost: 60, multEnergy: 2, desc: "Double energy gain. 60pts." },
+          { id: 8, baseCost: 90, multEnergy: 3, desc: "Triple energy gain. 90pts." },
+          { id: 9, baseCost: 150, addPoints: 5, desc: "+5pt/s. 150pts." },
+          { id: 10, baseCost: 225, multPoints: 2, desc: "Double points. 225pts." },
+          { id: 11, baseCost: 500, multPoints: 2, desc: "Double points. 500pts." },
+          { id: 12, baseCost: 800, multEnergy: 15, desc: "15x energy gain. 800pts." },
+          { id: 13, baseCost: 25, addTime: 10, desc: "+10s to timer. 25pts." },
+          { id: 14, baseCost: 125, addTime: 10, desc: "+10s to timer. 125pts." },
+          { id: 15, baseCost: 625, addTime: 10, desc: "+10s to timer. 625pts." },
+          { id: 16, baseCost: 2000, desc: "Get this upgrade. 2000pts." }
+        ],
+        ropes: []
+      },
+      4: {
+        title: "The Web",
+        objective: "Ropes are now bound to upgrades. Buying any upgrade in a cage multiplies the cost of the remaining upgrades in that cage instantly.",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1pt/s. FREE" },
+          { id: 2, baseCost: 3, addPoints: 2, desc: "+2pt/s. 3pts." },
+          { id: 3, baseCost: 30, addEnergy: 1, desc: "+1 energy/s. 30pts." },
+          { id: 4, baseCost: 45, addEnergy: 3, desc: "+3 energy/s. 45pts." },
+          { id: 5, baseCost: 15, addPoints: 3, desc: "+3pt/s. 15pts." },
+          { id: 6, baseCost: 25, addPoints: 4, desc: "+4pt/s. 25pts." },
+          { id: 7, baseCost: 60, multEnergy: 8, desc: "8x energy gain. 60pts." },
+          { id: 8, baseCost: 90, multPoints: 2, desc: "Double point gain. 90pts." },
+          { id: 9, baseCost: 150, multEnergy: 5, desc: "5x energy. 150pts." },
+          { id: 10, baseCost: 750, multEnergy: 25, desc: "25x energy. 750pts." },
+          { id: 11, baseCost: 500, multPoints: 2, desc: "Double points. 500pts." },
+          { id: 12, baseCost: 650, multEnergy: 16, desc: "16x energy gain. 650pts." },
+          { id: 13, baseCost: 450, addPoints: 5, desc: "+5pt/s. 450pts." },
+          { id: 14, baseCost: 700, multPoints: 2, desc: "Double points. 700pts." },
+          { id: 15, baseCost: 800, multPoints: 3, desc: "Triple points. 800pts." },
+          { id: 16, baseCost: 12500, desc: "Get this upgrade. 12500pts." }
+        ],
+        ropes: [
+          { ids: [7, 8], multiplier: 5 },
+          { ids: [9, 10], multiplier: 3 },
+          { ids: [11, 12], multiplier: 3 },
+          { ids: [13, 14, 15], multiplier: 2 }
+        ]
+      },
+      5: {
+        title: "Overlapping Matrix",
+        objective: "Overlapping chained upgrades require a highly strategic sequence of acquisitions. Watch out for Upgrade #09 and #13 which sit inside multiple cages!",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1 point/s. FREE" },
+          { id: 2, baseCost: 3, addEnergy: 1, desc: "+1 energy/s. 3pts." },
+          { id: 3, baseCost: 25, addPoints: 3, desc: "+3 points/s. 25pts." },
+          { id: 4, baseCost: 25, addEnergy: 5, desc: "+5 energy/s. 25pts." },
+          { id: 5, baseCost: 5, addPoints: 1, desc: "+1 point/s. 5pts." },
+          { id: 6, baseCost: 15, addPoints: 2, desc: "+2 points/s. 15pts." },
+          { id: 7, baseCost: 30, multEnergy: 5, desc: "5x energy gain. 30pts." },
+          { id: 8, baseCost: 75, multPoints: 2, desc: "Double point gain. 75pts." },
+          { id: 9, baseCost: 125, multPoints: 2, desc: "Double points. 125pts." },
+          { id: 10, baseCost: 250, multEnergy: 4, desc: "Quadruple energy. 250pts." },
+          { id: 11, baseCost: 400, multPoints: 3, desc: "Triple points. 400pts." },
+          { id: 12, baseCost: 700, multEnergy: 20, desc: "20x energy. 700pts." },
+          { id: 13, baseCost: 240, addPoints: 5, desc: "+5 points/s. 240pts." },
+          { id: 14, baseCost: 650, multPoints: 2, multEnergy: 2, desc: "Double points & energy. 650pts." },
+          { id: 15, baseCost: 4500, multPoints: 2, desc: "Double points. 4500pts." },
+          { id: 16, baseCost: 45000, desc: "Get this upgrade. 45000pts." }
+        ],
+        ropes: [
+          { ids: [3, 4], multiplier: 2 },
+          { ids: [9, 10, 11], multiplier: 2 },
+          { ids: [9, 13], multiplier: 2 },
+          { ids: [13, 14], multiplier: 3 }
+        ]
+      },
+      6: {
+        title: "Paradox Gates",
+        objective: "Manage exponentially inflating costs while weaving through locked matrix cages inside the 60.0s time limit.",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1pt/s. FREE" },
+          { id: 2, baseCost: 2, addPoints: 2, inflationRate: 1.15, desc: "+2pt/s [INFLATING x1.15/s]. 2pts." },
+          { id: 3, baseCost: 3, addEnergy: 1, desc: "+1 energy/s. 3pts." },
+          { id: 4, baseCost: 8, addEnergy: 5, desc: "+5 energy/s. 8pts." },
+          { id: 5, baseCost: 15, addPoints: 3, desc: "+3pt/s. 15pts." },
+          { id: 6, baseCost: 20, addPoints: 4, desc: "+4pt/s. 20pts." },
+          { id: 7, baseCost: 30, multEnergy: 5, desc: "5x energy gain. 30pts." },
+          { id: 8, baseCost: 45, multPoints: 2, multEnergy: 2, desc: "Double point & energy gain. 45pts." },
+          { id: 9, baseCost: 125, multPoints: 2, desc: "Double points. 125pts." },
+          { id: 10, baseCost: 200, multPoints: 3, desc: "Triple points. 200pts." },
+          { id: 11, baseCost: 100, addPoints: 5, inflationRate: 1.1, desc: "+5pt/s [INFLATING x1.1/s]. 100pts." },
+          { id: 12, baseCost: 50, addPoints: 7, inflationRate: 1.13, desc: "+7pt/s [INFLATING x1.13/s]. 50pts." },
+          { id: 13, baseCost: 700, multEnergy: 2, inflationRate: 1.05, desc: "Double energy [INFLATING x1.05/s]. 700pts." },
+          { id: 14, baseCost: 700, multPoints: 2, multEnergy: 2, inflationRate: 1.0625, desc: "Double points & energy [INFLATING x1.0625/s]. 700pts." },
+          { id: 15, baseCost: 700, multPoints: 2, inflationRate: 1.075, desc: "Double points [INFLATING x1.075/s]. 700pts." },
+          { id: 16, baseCost: 62500, desc: "Get this upgrade. 62500pts." }
+        ],
+        ropes: [
+          { ids: [3, 4, 7, 8], multiplier: 2 },
+          { ids: [9, 10], multiplier: 3 }
+        ]
+      },
+      7: {
+        title: "The Convergence",
+        objective: "Integrate all 16 custom core variables in the ultimate simulation layer. Deflation and compound cages are active.",
+        hasTimer: true,
+        upgrades: [
+          { id: 1, baseCost: 0, addPoints: 1, desc: "+1pt/s. FREE" },
+          { id: 2, baseCost: 2, addPoints: 2, desc: "+2pt/s. 2pts." },
+          { id: 3, baseCost: 2, addEnergy: 2, desc: "+2 energy/s. 2pts." },
+          { id: 4, baseCost: 25, multPoints: 2, multEnergy: 2, desc: "Double points & energy. 25pts." },
+          { id: 5, baseCost: 15, addPoints: 2, desc: "+2pt/s. 15pts." },
+          { id: 6, baseCost: 15, addPoints: 3, multEnergy: 5, desc: "+3pt/s, 5x energy. 15pts." },
+          { id: 7, baseCost: 18, addPoints: 4, multEnergy: 3, desc: "+4pt/s, triple energy. 18pts." },
+          { id: 8, baseCost: 21, addPoints: 6, multPoints: 1.5, desc: "+6pt/s, x1.5 points. 21pts." },
+          { id: 9, baseCost: 75, addTime: 3, inflationRate: 1.1, desc: "+3s to timer [INFLATING x1.1/s]. 75pts." },
+          { id: 10, baseCost: 5000, addTime: 3, desc: "+3s to timer. 5000pts." },
+          { id: 11, baseCost: 1000, multPoints: 1.8, multEnergy: 0.5, desc: "x1.8 points, x0.5 energy. 1000pts." },
+          { id: 12, baseCost: 1000, multPoints: 0.75, multEnergy: 10, desc: "x0.75 points, x10 energy. 1000pts." },
+          { id: 13, baseCost: 500, multPoints: 1.5, inflationRate: 1.025, desc: "x1.5 points [INFLATING x1.025/s]. 500pts." },
+          { id: 14, baseCost: 2000, multPoints: 1.5, desc: "x1.5 points. 2000pts." },
+          { id: 15, baseCost: 75000, multPoints: 2, inflationRate: 0.97, desc: "Double points [DEFLATING x0.97/s]. 75000pts." },
+          { id: 16, baseCost: 15000, desc: "Win the simulation convergence. 15000pts." }
+        ],
+        ropes: [
+          { ids: [2, 3], multiplier: 3 },
+          { ids: [6, 7, 8], multiplier: 4 },
+          { ids: [9, 10], multiplier: 2 },
+          { ids: [13, 14], multiplier: 3 }
+        ]
+      }
+    };
+
+    function getRopeColor(mult) {
+      if (mult === 2) return '#ef4444';      // Crimson Red
+      if (mult === 3) return '#f97316';      // Neon Orange
+      if (mult === 4) return '#eab308';      // Warning Yellow
+      if (mult === 5) return '#22c55e';      // Emerald Green
+      if (mult === 6) return '#3b82f6';      // Cobalt Blue
+      if (mult === 7) return '#a855f7';      // Tech Purple
+      return '#ec4899';                     // Hyper Pink (x8 or above)
+    }
+
+    // Centering and panning camera helpers
+    function updateFrame() {
+      gridWrapper.style.transform = `translate(${state.camX}px, ${state.camY}px) scale(${state.camZoom})`;
+    }
+
+    function recenterGrid() {
+      state.camX = 0;
+      state.camY = 0;
+      state.camZoom = 1.0;
+      updateFrame();
+    }
+
+    function initializeDoodleCanvas() {
+      ctx.clearRect(0, 0, doodleCanvas.width, doodleCanvas.height);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      // Render stored sketches
+      savedDrawings.forEach(stroke => {
+        if (stroke.points.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.weight;
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        ctx.stroke();
+      });
+    }
+
+    // Mapping coordinates relative to viewport zooms
+    function getCanvasCoords(e) {
+      const rect = doodleCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      
+      const relativeX = clientX - rect.left;
+      const relativeY = clientY - rect.top;
+      
+      const canvasX = (relativeX / rect.width) * doodleCanvas.width;
+      const canvasY = (relativeY / rect.height) * doodleCanvas.height;
+      
+      return { x: canvasX, y: canvasY };
+    }
+
+    // Universal Drag/Drawing handlers
+    viewportContainer.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      
+      if (state.drawMode === 'note' && state.planningMode) {
+        state.isDrawing = true;
+        const coords = getCanvasCoords(e);
+        ctx.beginPath();
+        ctx.strokeStyle = state.penColor;
+        ctx.lineWidth = state.penWeight;
+        ctx.moveTo(coords.x, coords.y);
+        
+        savedDrawings.push({
+          color: state.penColor,
+          weight: state.penWeight,
+          points: [coords]
+        });
+      } else {
+        state.isPanning = true;
+        state.panStartX = e.clientX - state.camX;
+        state.panStartY = e.clientY - state.camY;
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (state.drawMode === 'note' && state.planningMode) {
+        // Safe check: If mouse moved but left click is NOT held down, stop drawing!
+        if (e.buttons !== 1) {
+          state.isDrawing = false;
+          return;
+        }
+        if (state.isDrawing) {
+          const coords = getCanvasCoords(e);
+          ctx.lineTo(coords.x, coords.y);
+          ctx.stroke();
+          
+          const lastDrawing = savedDrawings[savedDrawings.length - 1];
+          if (lastDrawing) {
+            lastDrawing.points.push(coords);
+          }
+        }
+      } else if (state.isPanning) {
+        state.camX = e.clientX - state.panStartX;
+        state.camY = e.clientY - state.panStartY;
+        updateFrame();
+      }
+    });
+
+    // Add mouseleave listener to viewport to prevent phantom connected drawing lines
+    viewportContainer.addEventListener('mouseleave', () => {
+      state.isDrawing = false;
+      state.isPanning = false;
+    });
+
+    window.addEventListener('mouseup', () => {
+      state.isDrawing = false;
+      state.isPanning = false;
+    });
+
+    // Touch Support for mobile optimization
+    viewportContainer.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        if (state.drawMode === 'note' && state.planningMode) {
+          state.isDrawing = true;
+          const coords = getCanvasCoords(e);
+          ctx.beginPath();
+          ctx.strokeStyle = state.penColor;
+          ctx.lineWidth = state.penWeight;
+          ctx.moveTo(coords.x, coords.y);
+          
+          savedDrawings.push({
+            color: state.penColor,
+            weight: state.penWeight,
+            points: [coords]
+          });
+        } else {
+          state.isPanning = true;
+          state.panStartX = e.touches[0].clientX - state.camX;
+          state.panStartY = e.touches[0].clientY - state.camY;
+        }
+      }
+    }, { passive: true });
+
+    viewportContainer.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) {
+        if (state.isDrawing && state.planningMode) {
+          const coords = getCanvasCoords(e);
+          ctx.lineTo(coords.x, coords.y);
+          ctx.stroke();
+          
+          const lastDrawing = savedDrawings[savedDrawings.length - 1];
+          if (lastDrawing) {
+            lastDrawing.points.push(coords);
+          }
+        } else if (state.isPanning) {
+          state.camX = e.touches[0].clientX - state.panStartX;
+          state.camY = e.touches[0].clientY - state.panStartY;
+          updateFrame();
+        }
+      }
+    }, { passive: true });
+
+    viewportContainer.addEventListener('touchend', () => {
+      state.isDrawing = false;
+      state.isPanning = false;
+    });
+
+    viewportContainer.addEventListener('touchcancel', () => {
+      state.isDrawing = false;
+      state.isPanning = false;
+    });
+
+    viewportContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = 1.1;
+      if (e.deltaY < 0) {
+        state.camZoom = Math.min(state.camZoom * zoomFactor, 3.0);
+      } else {
+        state.camZoom = Math.max(state.camZoom / zoomFactor, 0.4);
+      }
+      updateFrame();
+    }, { passive: false });
+
+    document.getElementById('zoom-in').addEventListener('click', () => {
+      state.camZoom = Math.min(state.camZoom * 1.2, 3.0);
+      updateFrame();
+    });
+    document.getElementById('zoom-out').addEventListener('click', () => {
+      state.camZoom = Math.max(state.camZoom / 1.2, 0.4);
+      updateFrame();
+    });
+    document.getElementById('zoom-center').addEventListener('click', () => {
+      recenterGrid();
+    });
+
+    function loadStage(num) {
+      state.activeStage = num;
+      stageJumper.value = num;
+      const config = STAGE_CONFIGS[num];
+
+      state.points = 0;
+      state.energy = 0;
+      state.timer = 60.0;
+      lastSecondTick = 60;
+
+      // Handle Stage 1 time speed controls disability
+      const speedContainer = document.getElementById('speed-controls');
+      const btn05 = document.getElementById('speed-05');
+      const btn10 = document.getElementById('speed-10');
+      const btn20 = document.getElementById('speed-20');
+
+      if (num === 1) {
+        state.gameSpeed = 1.0;
+        btn05.disabled = true;
+        btn10.disabled = true;
+        btn20.disabled = true;
+        speedContainer.classList.add('opacity-40', 'pointer-events-none');
+        btn05.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-600 bg-transparent";
+        btn10.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-600 bg-zinc-800";
+        btn20.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-600 bg-transparent";
+      } else {
+        btn05.disabled = false;
+        btn10.disabled = false;
+        btn20.disabled = false;
+        speedContainer.classList.remove('opacity-40', 'pointer-events-none');
+        updateSpeedHighlights();
+      }
+
+      state.upgrades = config.upgrades.map(upg => ({
+        ...upg,
+        currentCost: upg.baseCost,
+        bought: false,
+        inflationRate: upg.inflationRate || 1.0
+      }));
+
+      state.ropes = config.ropes.map(rope => ({
+        ...rope,
+        activated: false
+      }));
+
+      if (num === 1) {
+        state.planningMode = false;
+        state.timerActive = false;
+        
+        planningToolbar.classList.add('hidden');
+        squaresGrid.style.pointerEvents = 'auto';
+
+        renderGrid();
+        renderCages();
+        recenterGrid();
+        initializeDoodleCanvas();
+        updateHUD();
+      } else {
+        enterPlanningMode();
+      }
+    }
+
+    function updateSpeedHighlights() {
+      const btn05 = document.getElementById('speed-05');
+      const btn10 = document.getElementById('speed-10');
+      const btn20 = document.getElementById('speed-20');
+
+      btn05.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-transparent hover:text-white transition-colors";
+      btn10.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-transparent hover:text-white transition-colors";
+      btn20.className = "px-2 py-0.5 text-[10px] font-bold text-zinc-400 bg-transparent hover:text-white transition-colors";
+
+      if (state.gameSpeed === 0.5) {
+        btn05.className = "px-2 py-0.5 text-[10px] font-bold text-black bg-amber-500";
+      } else if (state.gameSpeed === 1.0) {
+        btn10.className = "px-2 py-0.5 text-[10px] font-bold text-black bg-amber-500";
+      } else if (state.gameSpeed === 2.0) {
+        btn20.className = "px-2 py-0.5 text-[10px] font-bold text-black bg-amber-500";
+      }
+    }
+
+    function enterPlanningMode() {
+      state.planningMode = true;
+      state.timerActive = false;
+      state.points = 0;
+      state.energy = 0;
+      state.timer = 60.0;
+      
+      const config = STAGE_CONFIGS[state.activeStage];
+      state.upgrades = config.upgrades.map(upg => ({
+        ...upg,
+        currentCost: upg.baseCost,
+        bought: false,
+        inflationRate: upg.inflationRate || 1.0
+      }));
+
+      planningToolbar.classList.remove('hidden');
+      squaresGrid.style.pointerEvents = 'none';
+      
+      if (state.drawMode === 'note') {
+        penSubmenu.classList.remove('hidden');
+      }
+
+      renderGrid();
+      renderCages();
+      recenterGrid();
+      initializeDoodleCanvas();
+      updateHUD();
+
+      triggerStageDialogue(state.activeStage);
+    }
+
+    function triggerStageDialogue(stageNum) {
+      if (stageNum === 1) {
+        briefingOverlay.classList.add('hidden');
+        return;
+      }
+
+      // Check if user previously toggled "Do not show this tip again" for this stage
+      if (state.dismissedStages[stageNum]) {
+        briefingOverlay.classList.add('hidden');
+        return;
+      }
+
+      let text = "";
+      if (stageNum === 2) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 2: Timer</p>
+          <p>From now on, each stage have a <span class="text-white font-bold">60.0s countdown timer</span>. Failing to buy all upgrades make you lose (and restart)!</p>
+          <p>Take advantage of the newly unlocked <span class="text-amber-400 font-bold">Strategy Planning Mode</span> (unlocked from now on)! You can draw lines, draft custom sequences, and highlight paths, and note things that might help you decide which upgrades to buy first, when to buy them, etc.</p>
+          <p class="text-xs text-zinc-400 italic">Tip: Tap on the ✏️ Note tool to draw. You can choose colors and font sizes!.</p>
+        `;
+      } else if (stageNum === 3) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 3: Energy</p>
+          <p>The planning is too easy for you? Time for a new sub-currency: <span class="text-emerald-400 font-bold">Energy</span>!</p>
+          <p>Certain upgrades generate/muitiplies Energy. Energy boost Point gain at the following rate:</p>
+          <p class="text-center bg-zinc-900 border border-zinc-800 py-2 font-mono text-xs text-emerald-400">
+            Boost Multiplier = (Energy + 1) ^ 0.2
+          </p>
+          <p>Good luck!</p>
+        `;
+      } else if (stageNum === 4) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 4: Tied upgrades</p>
+          <p>Some upgrades are tied together.</p>
+          <p>When buying a upgrade inside a cage will <span class="text-red-500 font-bold">multiplies the price</span> of all remaining upgrades within that same cage by the number indicated in the lower-left corner.</p>
+          <p class="bg-zinc-900 border border-zinc-800 p-3 font-mono text-xs text-zinc-400 space-y-1">
+            <span>E.g: Cage Multiplier is x3.</span><br>
+            <span>Upgrade base cost = 15.</span><br>
+            <span>Buy 1 other upgrades in same cage first &rarr; cost instantly multiplies to 15 x 3, i.e 45.</span>
+          </p>
+          <p>Don't worry, it's possible with a few seconds of lenience. If you can't clic fast, considering changing the game speed to <span class="text-emerald-400 font-bold">0.5x</span>!</p>
+        `;
+      } else if (stageNum === 5) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 5: Overlapping ties</p>
+          <p>The complexity increases even further. There are now upgrades in two cages at the same time.</p>
+          <p>Upgrades <span class="text-amber-400 font-bold">Upgrade #09</span> and <span class="text-amber-400 font-bold">Upgrade #13</span> are inside multiple cages!</p>
+          <p>Think about the cage penalties, test combinations (don't be scared to fail a few times!), and learn new strategies.</p>
+        `;
+      } else if (stageNum === 6) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 6: Inflating upgrades</p>
+          <p>Last feature. Now, there are <span class="text-red-500 font-bold">Inflating Upgrades</span>!</p>
+          <p>These upgrade's price grow exponentially every second! If you don't buy them in time, their prices may rise to completely unbuyable numbers.</p>
+          <p>You are <span class="text-emerald-400 font-bold">so close</span>. Good luck!</p>
+        `;
+      } else if (stageNum === 7) {
+        text = `
+          <p class="font-bold text-amber-500 text-lg">STAGE 7: Final puzzle</p>
+          <p>Welcome to the final test! This stage contain quite a lot of things.</p>
+          <p>This final simulation layer brings together <span class="text-white font-bold">Cages</span>, <span class="text-red-500 font-bold">Inflating Upgrades</span>, and a <span class="text-amber-400 font-bold">Deflating Upgrade (#15)</span> whose cost drops over time. (i just made the inflation rate less than 1 lol)</p>
+          <p>Think about the multipliers and effects, and make every second count. Good luck.</p>
+        `;
+      }
+
+      briefingContent.innerHTML = text;
+      
+      // Reset Checkbox visual state
+      dontShowCheckbox.checked = false;
+      dontShowBox.className = "w-5 h-5 border border-zinc-800 bg-zinc-950 flex items-center justify-center transition-all group-hover:border-amber-500";
+      dontShowTick.classList.add('hidden');
+
+      briefingOverlay.classList.remove('hidden');
+    }
+
+    // Toggle custom fancy checkbox
+    dontShowCheckbox.addEventListener('change', () => {
+      if (dontShowCheckbox.checked) {
+        dontShowBox.className = "w-5 h-5 border border-amber-500 bg-amber-950/20 flex items-center justify-center transition-all";
+        dontShowTick.classList.remove('hidden');
+      } else {
+        dontShowBox.className = "w-5 h-5 border border-zinc-800 bg-zinc-950 flex items-center justify-center transition-all group-hover:border-amber-500";
+        dontShowTick.classList.add('hidden');
+      }
+    });
+
+    closeBriefingBtn.addEventListener('click', () => {
+      if (dontShowCheckbox.checked) {
+        state.dismissedStages[state.activeStage] = true;
+      }
+      briefingOverlay.classList.add('hidden');
+    });
+
+    function calculatePointsPerSecond() {
+      let pps = 0;
+      
+      // Pass 1: Addition
+      state.upgrades.forEach(u => {
+        if (!u.bought) return;
+        if (u.addPoints) pps += u.addPoints;
+      });
+
+      // Pass 2: Multiplication
+      state.upgrades.forEach(u => {
+        if (!u.bought) return;
+        if (u.multPoints !== undefined) pps *= u.multPoints;
+      });
+
+      if (state.activeStage === 2) {
+        const u14 = state.upgrades.find(u => u.id === 14);
+        if (u14 && u14.bought) {
+          const selfMultiplier = Math.pow((state.points / 25) + 1, 0.2);
+          pps *= selfMultiplier;
+        }
+      }
+
+      if (state.activeStage >= 3) {
+        const energyBoost = Math.pow(state.energy + 1, 0.2);
+        pps *= energyBoost;
+      }
+
+      return pps;
+    }
+
+    function calculateEnergyPerSecond() {
+      if (state.activeStage < 3) return 0;
+      let eps = 0;
+
+      // Pass 1: Addition
+      state.upgrades.forEach(u => {
+        if (!u.bought) return;
+        if (u.addEnergy) eps += u.addEnergy;
+      });
+
+      // Pass 2: Multiplication
+      state.upgrades.forEach(u => {
+        if (!u.bought) return;
+        if (u.multEnergy !== undefined) eps *= u.multEnergy;
+      });
+
+      return eps;
+    }
+
+    function renderCages() {
+      svgCagesLayer.innerHTML = "";
+
+      requestAnimationFrame(() => {
+        const wrapperRect = gridWrapper.getBoundingClientRect();
+        if (wrapperRect.width === 0) return;
+
+        const scale = 600 / wrapperRect.width;
+
+        state.ropes.forEach((rope, index) => {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          let validCards = 0;
+
+          rope.ids.forEach(id => {
+            const card = document.querySelector(`[data-upgrade-id="${id}"]`);
+            if (!card) return;
+            const cardRect = card.getBoundingClientRect();
+            
+            const l = (cardRect.left - wrapperRect.left) * scale;
+            const t = (cardRect.top - wrapperRect.top) * scale;
+            const r = (cardRect.right - wrapperRect.left) * scale;
+            const b = (cardRect.bottom - wrapperRect.top) * scale;
+
+            if (l < minX) minX = l;
+            if (t < minY) minY = t;
+            if (r > maxX) maxX = r;
+            if (b > maxY) maxY = b;
+            validCards++;
+          });
+
+          if (validCards === 0) return;
+
+          const pathColor = getRopeColor(rope.multiplier);
+          const padding = 5;
+          
+          // Draw dashed cage borders
+          const rectCage = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rectCage.setAttribute("x", minX - padding);
+          rectCage.setAttribute("y", minY - padding);
+          rectCage.setAttribute("width", (maxX - minX) + (padding * 2));
+          rectCage.setAttribute("height", (maxY - minY) + (padding * 2));
+          rectCage.setAttribute("stroke", pathColor);
+          rectCage.setAttribute("stroke-width", "2");
+          rectCage.setAttribute("stroke-dasharray", "5,5");
+          rectCage.setAttribute("fill", "none");
+          rectCage.setAttribute("opacity", "0.95");
+          svgCagesLayer.appendChild(rectCage);
+
+          // HIGH-CONTRAST BADGE BACKGROUND
+          const textWidth = rope.multiplier >= 10 ? 28 : 20;
+          const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          bgRect.setAttribute("x", minX - padding + 2);
+          bgRect.setAttribute("y", maxY + padding - 18);
+          bgRect.setAttribute("width", textWidth);
+          bgRect.setAttribute("height", 14);
+          bgRect.setAttribute("fill", "#030303");
+          bgRect.setAttribute("stroke", pathColor);
+          bgRect.setAttribute("stroke-width", "1");
+          bgRect.setAttribute("opacity", "1");
+          svgCagesLayer.appendChild(bgRect);
+
+          // MULTIPLIER TEXT (Rendered securely on top inside the absolute SVG layers)
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text.setAttribute("x", minX - padding + 4);
+          text.setAttribute("y", maxY + padding - 7);
+          text.setAttribute("fill", pathColor);
+          text.setAttribute("font-family", "'Space Mono', monospace");
+          text.setAttribute("font-size", "10");
+          text.setAttribute("font-weight", "bold");
+          text.textContent = `x${rope.multiplier}`;
+          svgCagesLayer.appendChild(text);
+        });
+      });
+    }
+
+    function renderGrid() {
+      squaresGrid.innerHTML = "";
+      
+      state.upgrades.forEach(u => {
+        const card = document.createElement('div');
+        card.setAttribute('data-upgrade-id', u.id);
+        
+        // Hover/Active tactile cue effects
+        card.className = "relative border p-2 flex flex-col justify-between transition-all duration-100 select-none cursor-pointer transform hover:scale-[1.03] hover:border-white active:scale-[0.97] z-10";
+
+        const isAffordable = state.points >= u.currentCost && !u.bought;
+        let bgStyleClass = "pattern-locked border-zinc-800 text-zinc-400";
+        let textStyleClass = "text-zinc-400";
+
+        if (u.bought) {
+          bgStyleClass = "pattern-bought border-emerald-500 text-emerald-400";
+          textStyleClass = "text-emerald-400";
+        } else if (isAffordable) {
+          bgStyleClass = "pattern-can-buy border-amber-500 text-amber-400";
+          textStyleClass = "text-amber-400 font-bold";
+        }
+
+        if (u.inflationRate !== 1.0 && !u.bought) {
+          card.classList.add('animate-pulse');
+          if (u.inflationRate > 1.0) {
+            card.style.borderColor = '#ef4444'; // Red for inflation
+          } else {
+            card.style.borderColor = '#3b82f6'; // Blue for deflation
+          }
+        }
+
+        card.className += ` ${bgStyleClass}`;
+
+        // Semi-transparent vertical progress indicator behind the text
+        let progressOverlay = "";
+        if (!u.bought && u.currentCost > 0) {
+          const percent = Math.min(100, (state.points / u.currentCost) * 100);
+          progressOverlay = `
+            <div class="absolute bottom-0 left-0 w-full bg-amber-500/10 pointer-events-none transition-all duration-100" style="height: ${percent}%;"></div>
+          `;
+        }
+
+        let displayCost = u.currentCost === 0 ? "FREE" : `${Math.round(u.currentCost)}pts`;
+        let displayDesc = u.desc;
+
+        if (state.activeStage === 2 && u.id === 14) {
+          const curBoost = Math.pow((state.points / 25) + 1, 0.2);
+          displayDesc = `Points boost itself at a rate of (pts/25+1)^0.2, currently x${curBoost.toFixed(2)}. 300pts.`;
+        }
+
+        card.innerHTML = `
+          ${progressOverlay}
+          <div class="relative z-10 flex justify-between items-start">
+            <span class="text-[10px] font-bold ${textStyleClass}">#${u.id < 10 ? '0' + u.id : u.id}</span>
+          </div>
+          <p class="relative z-10 text-[9px] leading-tight font-bold my-1 text-left ${textStyleClass}">${displayDesc}</p>
+          <div class="relative z-10 text-right">
+            <span class="text-xs font-black tracking-wide ${textStyleClass}">${displayCost}</span>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          if (state.planningMode) return; 
+          buyUpgrade(u.id);
+        });
+
+        squaresGrid.appendChild(card);
+      });
+    }
+
+    function buyUpgrade(id) {
+      const u = state.upgrades.find(item => item.id === id);
+      if (!u || u.bought) return;
+
+      if (state.points >= u.currentCost) {
+        state.points -= u.currentCost;
+        u.bought = true;
+
+        if (u.addTime) {
+          state.timer += u.addTime;
+          playTimeAddChime();
+        } else {
+          playBeep(440, 'triangle', 0.12, 0.08);
+        }
+
+        // Pulse overlay flash effect
+        flashOverlay.className = "absolute inset-0 pointer-events-none z-30 bg-emerald-500/10 flash-active";
+        setTimeout(() => {
+          flashOverlay.className = "absolute inset-0 pointer-events-none z-30 opacity-0";
+        }, 150);
+
+        // Apply cost multiplier escalation inside the ropes
+        state.ropes.forEach(rope => {
+          if (rope.ids.includes(u.id)) {
+            rope.ids.forEach(partnerId => {
+              if (partnerId === u.id) return;
+              const partnerUpg = state.upgrades.find(item => item.id === partnerId);
+              if (partnerUpg && !partnerUpg.bought) {
+                partnerUpg.currentCost *= rope.multiplier;
+              }
+            });
+          }
+        });
+
+        renderGrid();
+        renderCages();
+        checkWinCondition();
+      } else {
+        playBeep(150, 'square', 0.15, 0.05);
+      }
+    }
+
+    function checkWinCondition() {
+      const allBought = state.upgrades.every(u => u.bought);
+      if (allBought) {
+        state.timerActive = false;
+        playBeep(880, 'sine', 0.4, 0.1);
+        
+        const cards = document.querySelectorAll('#squares-grid > div');
+        cards.forEach((card, idx) => {
+          card.style.transition = `all 0.5s cubic-bezier(0.4, 0, 0.2, 1) ${idx * 40}ms`;
+          card.style.transform = 'translateY(800px) rotate(15deg)';
+          card.style.opacity = '0';
+        });
+
+        setTimeout(() => {
+          const messages = {
+            1: "All upgrades bought, level clear!",
+            2: "All upgrades bought again, you're doing great!",
+            3: "All upgrades bought, good luck on the next stages!",
+            4: "All upgrades boguht, congratulations on winning the chained upgrades!",
+            5: "All upgrades bought. Wow you've defeated overlapping cages, you're doing amazing!",
+            6: "All upgrades boguht. Good luck for the final puzzle.",
+            7: "GG! You win! Thanks for playing!"
+          };
+          victoryMessage.textContent = messages[state.activeStage] || "Simulation configured perfectly.";
+          victoryOverlay.classList.remove('hidden');
+        }, 1000);
+      }
+    }
+
+    nextStageBtn.addEventListener('click', () => {
+      victoryOverlay.classList.add('hidden');
+      if (state.activeStage < 7) {
+        const next = state.activeStage + 1;
+        state.unlockedStageMax = Math.max(state.unlockedStageMax, next);
+        loadStage(next);
+      } else {
+        loadStage(1);
+      }
+    });
+
+    let lastTime = performance.now();
+    
+    function gameLoop(now) {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+
+      const adjustedDt = dt * state.gameSpeed;
+
+      if (!state.planningMode) {
+        const pps = calculatePointsPerSecond();
+        const eps = calculateEnergyPerSecond();
+
+        state.points += pps * adjustedDt;
+        state.energy += eps * adjustedDt;
+
+        const config = STAGE_CONFIGS[state.activeStage];
+        if (config.hasTimer && state.timerActive) {
+          state.timer -= adjustedDt;
+          if (state.timer <= 0) {
+            state.timer = 0;
+            state.timerActive = false;
+            
+            playBeep(100, 'sawtooth', 0.8, 0.15);
+            enterPlanningMode();
+          }
+
+          // Immersive final 10s tension thumping warnings
+          const currentSecond = Math.ceil(state.timer);
+          if (state.timer <= 10 && currentSecond !== lastSecondTick) {
+            playWarningTick();
+            lastSecondTick = currentSecond;
+          }
+        }
+
+        // Apply inflation rate changes (exponential scaling or deflating calculations)
+        state.upgrades.forEach(u => {
+          if (!u.bought && u.inflationRate !== 1.0) {
+            u.currentCost *= Math.pow(u.inflationRate, adjustedDt);
+          }
+        });
+
+        renderGrid();
+        updateHUD();
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function updateHUD() {
+      // If we are in planning mode, do NOT show points, energy, timers or multipliers.
+      if (state.planningMode) {
+        hudStatusMode.textContent = "PLANNING MODE";
+        hudPointsDisplay.classList.add('hidden');
+        hudEnergyDisplay.classList.add('hidden');
+        hudTimerDisplay.classList.add('hidden');
+        return;
+      }
+
+      // If active, display standard parameters
+      hudStatusMode.textContent = "ACTIVE RUN";
+      hudPointsDisplay.classList.remove('hidden');
+
+      const pps = calculatePointsPerSecond();
+      hudPointsDisplay.textContent = `Points: ${Math.round(state.points)} (+${pps.toFixed(1)}/s)`;
+
+      if (state.activeStage >= 3) {
+        hudEnergyDisplay.classList.remove('hidden');
+        const eps = calculateEnergyPerSecond();
+        const energyBoost = Math.pow(state.energy + 1, 0.2);
+        hudEnergyDisplay.textContent = `Energy: ${Math.round(state.energy)} (+${eps.toFixed(1)}/s) [Boost: x${energyBoost.toFixed(2)}]`;
+      } else {
+        hudEnergyDisplay.classList.add('hidden');
+      }
+
+      const config = STAGE_CONFIGS[state.activeStage];
+      if (config.hasTimer) {
+        hudTimerDisplay.classList.remove('hidden');
+        hudTimerDisplay.textContent = `Time remaining: ${Math.max(0, state.timer).toFixed(2)}s`;
+      } else {
+        hudTimerDisplay.classList.add('hidden');
+      }
+    }
+
+    toolDrag.addEventListener('click', () => {
+      state.drawMode = 'drag';
+      toolDrag.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
+      toolNote.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+      penSubmenu.classList.add('hidden');
+    });
+
+    toolNote.addEventListener('click', () => {
+      state.drawMode = 'note';
+      toolNote.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
+      toolDrag.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+      
+      if (state.planningMode) {
+        penSubmenu.classList.remove('hidden');
+      }
+    });
+
+    toolClear.addEventListener('click', () => {
+      savedDrawings = [];
+      initializeDoodleCanvas();
+      playBeep(220, 'sine', 0.1, 0.05);
+    });
+
+    // Execute Active Run
+    executeRunBtn.addEventListener('click', () => {
+      state.planningMode = false;
+      state.timerActive = true;
+      state.points = 0;
+      state.energy = 0;
+      state.timer = 60.0;
+      lastSecondTick = 60;
+
+      planningToolbar.classList.add('hidden');
+      penSubmenu.classList.add('hidden');
+      squaresGrid.style.pointerEvents = 'auto'; 
+
+      const config = STAGE_CONFIGS[state.activeStage];
+      state.upgrades = config.upgrades.map(upg => ({
+        ...upg,
+        currentCost: upg.baseCost,
+        bought: false,
+        inflationRate: upg.inflationRate || 1.0
+      }));
+
+      renderGrid();
+      renderCages();
+      recenterGrid();
+      updateHUD();
+      playBeep(600, 'sine', 0.25, 0.08);
+    });
+
+    resetStageBtn.addEventListener('click', () => {
+      if (state.activeStage === 1) {
+        loadStage(1);
+      } else {
+        enterPlanningMode();
+      }
+      playBeep(330, 'triangle', 0.15, 0.05);
+    });
+
+    const speedButtons = {
+      'speed-05': 0.5,
+      'speed-10': 1.0,
+      'speed-20': 2.0
+    };
+    Object.keys(speedButtons).forEach(id => {
+      document.getElementById(id).addEventListener('click', () => {
+        // Stop if disabled (Stage 1)
+        if (state.activeStage === 1) return;
+
+        state.gameSpeed = speedButtons[id];
+        updateSpeedHighlights();
+        playBeep(400 + state.gameSpeed * 100, 'sine', 0.08, 0.05);
+      });
+    });
+
+    // Pen Sub-menu weights selector binding
+    const weightButtons = {
+      'weight-thin': 2,
+      'weight-medium': 4,
+      'weight-thick': 8
+    };
+    Object.keys(weightButtons).forEach(id => {
+      document.getElementById(id).addEventListener('click', () => {
+        state.penWeight = weightButtons[id];
+        Object.keys(weightButtons).forEach(btnId => {
+          document.getElementById(btnId).className = "w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-transparent text-zinc-500";
+        });
+        document.getElementById(id).className = "w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-zinc-900 text-zinc-300";
+      });
+    });
+
+    // Pen Sub-menu colors selector binding
+    const colorButtons = document.querySelectorAll('[data-color]');
+    colorButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.penColor = btn.getAttribute('data-color');
+        colorButtons.forEach(b => b.classList.add('border-transparent'));
+        colorButtons.forEach(b => b.classList.remove('border-white'));
+        btn.classList.add('border-white');
+        btn.classList.remove('border-transparent');
+      });
+    });
+
+    // Stage dropdown selector
+    stageJumper.addEventListener('change', () => {
+      const selectedStage = parseInt(stageJumper.value);
+      loadStage(selectedStage);
+    });
+
+    // WINDOW INITIALIZATION ONLOAD
+    window.onload = function () {
+      loadStage(1);
+      requestAnimationFrame(gameLoop);
+    };
+
+    // Responsive window resizing bounds alignment
+    window.addEventListener('resize', () => {
+      renderCages();
+    });
+  </script>
+</body>
+</html>

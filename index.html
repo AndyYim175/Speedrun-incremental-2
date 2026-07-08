@@ -24,6 +24,7 @@
       font-family: 'Space Mono', monospace;
       background-color: #030303;
       overflow: hidden;
+      height: 100dvh; /* Use dynamic viewport height for better mobile support */
     }
     
     /* ANIMATING STRIPE PATTERNS FOR BACKGROUND VISUALS */
@@ -165,7 +166,7 @@
     <div id="flash-overlay" class="absolute inset-0 pointer-events-none z-30 transition-opacity opacity-0"></div>
 
     <!-- HUD TEXT OVERLAY (FLOAT BOTTOM-LEFT, NO BACKGROUND OBSTRUCTIONS) -->
-    <div id="hud-stats-overlay" class="absolute bottom-5 left-5 z-40 pointer-events-none space-y-1">
+    <div id="hud-stats-overlay" class="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-5 z-40 pointer-events-none space-y-1">
       <div class="text-sm font-bold tracking-wider text-zinc-500" id="hud-status-mode">PLANNING MODE</div>
       <div class="text-xl font-black text-white" id="hud-points-display">Points: 0 (+0.0/s)</div>
       <div class="text-sm text-zinc-400 hidden" id="hud-energy-display">Energy: 0 (+0.0/s) [Boost: x1.00]</div>
@@ -173,7 +174,7 @@
     </div>
 
     <!-- ACCESSIBILITY CAMERA ADJUSTER CONSOLE -->
-    <div class="absolute bottom-5 right-5 z-40 flex space-x-1 bg-black/60 border border-zinc-800 p-1">
+    <div class="absolute bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-40 flex space-x-1 bg-black/60 border border-zinc-800 p-1">
       <button id="zoom-in" class="w-8 h-8 flex items-center justify-center text-xs font-black text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Zoom In">+</button>
       <button id="zoom-out" class="w-8 h-8 flex items-center justify-center text-xs font-black text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Zoom Out">-</button>
       <button id="zoom-center" class="px-2 h-8 flex items-center justify-center text-[10px] font-bold text-zinc-400 hover:text-white border border-zinc-800 hover:bg-zinc-900" title="Recenter Camera">RECENTER</button>
@@ -182,7 +183,7 @@
   </main>
 
   <!-- STRATEGY PLANNING TOOLBAR (SLIDES UP FROM BOTTOM) -->
-  <footer id="planning-toolbar" class="w-full bg-black border-t border-zinc-800 p-4 flex flex-col items-center justify-center space-y-3 z-40 transition-transform duration-300 relative">
+  <footer id="planning-toolbar" class="w-full bg-black border-t border-zinc-800 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col items-center justify-center space-y-3 z-40 transition-transform duration-300 relative">
     
     <!-- PEN SETTINGS SUB-MENU (POPS UP IN PEN MODE) -->
     <div id="pen-submenu" class="flex items-center space-x-4 bg-zinc-950 border border-zinc-800 px-3 py-1.5 transition-all duration-200 hidden">

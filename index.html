@@ -173,7 +173,8 @@
 
   </main>
 
-  <footer id="planning-toolbar" class="w-full bg-black border-t border-zinc-800 p-4 flex flex-col items-center justify-center space-y-3 z-40 transition-transform duration-300 relative shrink-0" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));">
+  <!-- Updated transition timing to 500ms with custom ease-out quad curve -->
+  <footer id="planning-toolbar" class="w-full bg-black border-t border-zinc-800 p-4 flex flex-col items-center justify-center space-y-3 z-40 transition-all duration-500 ease-[cubic-bezier(0.25,0.46,0.45,0.94)] relative shrink-0" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));">
     
     <!-- PEN SETTINGS SUB-MENU (Slides up when in note mode) -->
     <div id="pen-submenu" class="flex items-center space-x-4 bg-zinc-950 border border-zinc-800 px-3 py-1.5 transition-all duration-200 hidden">
@@ -851,7 +852,8 @@
         inflationRate: upg.inflationRate || 1.0
       }));
 
-      planningToolbar.classList.remove('hidden');
+      // Make sure planning-toolbar transition targets are reset
+      planningToolbar.classList.remove('hidden', 'translate-y-full', 'opacity-0');
       squaresGrid.style.pointerEvents = 'none';
       
       if (state.drawMode === 'note') {
@@ -1357,6 +1359,17 @@
     });
 
     executeRunBtn.addEventListener('click', () => {
+      // Easing implementation: Slide toolbar downwards gracefully on Stage 2+
+      if (state.activeStage >= 2) {
+        planningToolbar.classList.add('translate-y-full', 'opacity-0');
+        setTimeout(() => {
+          planningToolbar.classList.add('hidden');
+          recenterGrid();
+        }, 500);
+      } else {
+        planningToolbar.classList.add('hidden');
+      }
+
       state.planningMode = false;
       state.timerActive = true;
       state.points = 0;
@@ -1364,7 +1377,6 @@
       state.timer = 60.0;
       lastSecondTick = 60;
 
-      planningToolbar.classList.add('hidden');
       penSubmenu.classList.add('hidden');
       squaresGrid.style.pointerEvents = 'auto'; 
 
@@ -1376,11 +1388,34 @@
         inflationRate: upg.inflationRate || 1.0
       }));
 
+      // AUTO-BUY UPGRADE #1 ON STAGE 2+ (Free upgrade #1 purchased instantly)
+      if (state.activeStage >= 2) {
+        const freeUpg = state.upgrades.find(u => u.id === 1);
+        if (freeUpg) {
+          freeUpg.bought = true;
+          // Trigger partner cost multiplications if applicable
+          state.ropes.forEach(rope => {
+            if (rope.ids.includes(freeUpg.id)) {
+              rope.ids.forEach(partnerId => {
+                if (partnerId === freeUpg.id) return;
+                const partnerUpg = state.upgrades.find(item => item.id === partnerId);
+                if (partnerUpg && !partnerUpg.bought) {
+                  partnerUpg.currentCost *= rope.multiplier;
+                }
+              });
+            }
+          });
+          // Play quick startup confirmation chime
+          playBeep(523.25, 'triangle', 0.1, 0.05);
+        }
+      } else {
+        playBeep(600, 'sine', 0.25, 0.08);
+      }
+
       renderGrid();
       renderCages();
       recenterGrid();
       updateHUD();
-      playBeep(600, 'sine', 0.25, 0.08);
     });
 
     resetStageBtn.addEventListener('click', () => {

@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Convergent Grid Puzzle Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Incremental Rush</title>
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -145,7 +145,7 @@
       </div>
 
       <!-- SVG CAGES CONNECTION LAYER (Sits on top of upgrades grid for max visibility) -->
-      <svg id="svg-cages-layer" class="absolute inset-0 w-full h-full pointer-events-none z-25" style="position: absolute; pointer-events: none; z-index: 25;" xmlns="http://www.w3.org/2000/svg">
+      <svg id="svg-cages-layer" class="absolute inset-0 w-full h-full pointer-events-none z-20" style="position: absolute; pointer-events: none;" xmlns="http://www.w3.org/2000/svg">
         <!-- Path borders and badges injected dynamically -->
       </svg>
 
@@ -159,8 +159,8 @@
     <!-- HUD TEXT OVERLAY (Hidden during Planning Mode) -->
     <div id="hud-stats-overlay" class="absolute bottom-5 left-5 z-40 pointer-events-none space-y-1">
       <div class="text-sm font-bold tracking-wider text-zinc-500" id="hud-status-mode">PLANNING MODE</div>
-      <div class="text-xl font-black text-white" id="hud-points-display">Points: 0 (+0.0/s)</div>
-      <div class="text-sm text-zinc-400 hidden" id="hud-energy-display">Energy: 0 (+0.0/s) [Boost: x1.00]</div>
+      <div class="text-xs sm:text-sm font-black text-white" id="hud-points-display">Points: 0 (+0.0/s)</div>
+      <div class="text-xs text-zinc-400 hidden" id="hud-energy-display">Energy: 0 (+0.0/s) [Boost: x1.00]</div>
       <div class="text-sm text-red-500 font-bold hidden" id="hud-timer-display">Time remaining: 60.00s</div>
     </div>
 
@@ -233,7 +233,7 @@
         <span class="text-xs font-bold text-amber-500 tracking-widest font-mono">Game Update</span>
         <span class="text-[10px] text-zinc-500 font-mono">Good Luck!</span>
       </div>
-      <div id="briefing-content" class="text-sm leading-relaxed text-zinc-300 space-y-4 font-mono">
+      <div id="briefing-content" class="text-sm leading-relaxed text-zinc-300 space-y-4 font-mono font-bold">
         <!-- Populated via script based on stage context -->
       </div>
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4 border-t border-zinc-900">
@@ -549,7 +549,7 @@
           { id: 13, baseCost: 500, multPoints: 1.5, inflationRate: 1.025, desc: "x1.5 points [INFLATING x1.025/s]. 500pts." },
           { id: 14, baseCost: 2000, multPoints: 1.5, desc: "x1.5 points. 2000pts." },
           { id: 15, baseCost: 75000, multPoints: 2, inflationRate: 0.97, desc: "Double points [DEFLATING x0.97/s]. 75000pts." },
-          { id: 16, baseCost: 9000, desc: "Win the simulation convergence. 15000pts." }
+          { id: 16, baseCost: 9000, desc: "Win the simulation convergence. 9000pts." }
         ],
         ropes: [
           { ids: [2, 3], multiplier: 3 },
@@ -926,8 +926,8 @@
         text = `
           <p class="font-bold text-amber-500 text-lg">STAGE 7: The Convergence</p>
           <p>Welcome to the final test! This stage contains quite a lot of moving parts.</p>
-          <p>This final simulation layer brings together <span class="text-white font-bold">Cages</span>, <span class="text-red-500 font-bold">Inflating Upgrades</span>, and a <span class="text-amber-400 font-bold">Deflating Upgrade (#15)</span> whose cost drops over time. (inflation rate x0.97/s)</p>
-          <p>Think about the multipliers and effects, and make every second count. Good luck!</p>
+          <p>This final simulation layer brings together <span class="text-white font-bold">Cages</span>, <span class="text-red-500 font-bold">Inflating Upgrades</span>, and a <span class="text-amber-400 font-bold">Deflating Upgrade (#15)</span> whose cost drops over time (deflation rate x0.97/s).</p>
+          <p>Think about the multipliers and effects, and make every second count. Good luck on this final stage!</p>
         `;
       }
 
@@ -957,50 +957,47 @@
       briefingOverlay.classList.add('hidden');
     });
 
-    function calculatePointsPerSecond() {
-      let pps = 0;
-      
+    function getPointsBreakdown() {
+      let base = 0;
       state.upgrades.forEach(u => {
-        if (!u.bought) return;
-        if (u.addPoints) pps += u.addPoints;
+        if (u.bought && u.addPoints) base += u.addPoints;
       });
 
+      let mult = 1;
       state.upgrades.forEach(u => {
-        if (!u.bought) return;
-        if (u.multPoints !== undefined) pps *= u.multPoints;
+        if (u.bought && u.multPoints !== undefined) mult *= u.multPoints;
       });
 
       if (state.activeStage === 2) {
         const u14 = state.upgrades.find(u => u.id === 14);
         if (u14 && u14.bought) {
           const selfMultiplier = Math.pow((state.points / 25) + 1, 0.2);
-          pps *= selfMultiplier;
+          mult *= selfMultiplier;
         }
       }
 
       if (state.activeStage >= 3) {
         const energyBoost = Math.pow(state.energy + 1, 0.2);
-        pps *= energyBoost;
+        mult *= energyBoost;
       }
 
-      return pps;
+      return { base, mult, total: base * mult };
     }
 
-    function calculateEnergyPerSecond() {
-      if (state.activeStage < 3) return 0;
-      let eps = 0;
+    function getEnergyBreakdown() {
+      if (state.activeStage < 3) return { base: 0, mult: 0, total: 0 };
+      let base = 0;
 
       state.upgrades.forEach(u => {
-        if (!u.bought) return;
-        if (u.addEnergy) eps += u.addEnergy;
+        if (u.bought && u.addEnergy) base += u.addEnergy;
       });
 
+      let mult = 1;
       state.upgrades.forEach(u => {
-        if (!u.bought) return;
-        if (u.multEnergy !== undefined) eps *= u.multEnergy;
+        if (u.bought && u.multEnergy !== undefined) mult *= u.multEnergy;
       });
 
-      return eps;
+      return { base, mult, total: base * mult };
     }
 
     function renderCages() {
@@ -1082,7 +1079,35 @@
         const card = document.createElement('div');
         card.setAttribute('data-upgrade-id', u.id);
         
-        card.className = "relative border p-2 flex flex-col justify-between transition-all duration-100 select-none cursor-pointer transform hover:scale-[1.03] hover:border-white active:scale-[0.97] z-10";
+        card.className = "upgrade-card relative border p-2 flex flex-col justify-between transition-all duration-100 select-none cursor-pointer transform hover:scale-[1.03] hover:border-white active:scale-[0.97] z-10";
+
+        card.innerHTML = `
+          <div class="progress-bar absolute bottom-0 left-0 w-full bg-amber-500/10 pointer-events-none transition-all duration-100" style="height: 0%;"></div>
+          <div class="relative z-10 flex justify-between items-start">
+            <span class="card-id text-[10px] font-bold">#${u.id < 10 ? '0' + u.id : u.id}</span>
+          </div>
+          <p class="card-desc relative z-10 text-[9px] leading-tight font-bold my-1 text-left"></p>
+          <div class="relative z-10 text-right">
+            <span class="card-cost text-xs font-black tracking-wide"></span>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          if (state.planningMode) return; 
+          buyUpgrade(u.id);
+        });
+
+        squaresGrid.appendChild(card);
+      });
+
+      // Execute immediate interface updates
+      updateGridUI();
+    }
+
+    function updateGridUI() {
+      state.upgrades.forEach(u => {
+        const card = squaresGrid.querySelector(`[data-upgrade-id="${u.id}"]`);
+        if (!card) return;
 
         const isAffordable = state.points >= u.currentCost && !u.bought;
         let bgStyleClass = "pattern-locked border-zinc-800 text-zinc-400";
@@ -1096,6 +1121,8 @@
           textStyleClass = "text-amber-400 font-bold";
         }
 
+        card.className = `upgrade-card relative border p-2 flex flex-col justify-between transition-all duration-100 select-none cursor-pointer transform hover:scale-[1.03] hover:border-white active:scale-[0.97] z-10 ${bgStyleClass}`;
+
         if (u.inflationRate !== 1.0 && !u.bought) {
           card.classList.add('animate-pulse');
           if (u.inflationRate > 1.0) {
@@ -1103,16 +1130,21 @@
           } else {
             card.style.borderColor = '#3b82f6'; 
           }
+        } else {
+          card.style.borderColor = '';
         }
 
-        card.className += ` ${bgStyleClass}`;
-
-        let progressOverlay = "";
-        if (!u.bought && u.currentCost > 0) {
-          const percent = Math.min(100, (state.points / u.currentCost) * 100);
-          progressOverlay = `
-            <div class="absolute bottom-0 left-0 w-full bg-amber-500/10 pointer-events-none transition-all duration-100" style="height: ${percent}%;"></div>
-          `;
+        // Adjust interactive progress bar height
+        const progress = card.querySelector('.progress-bar');
+        if (progress) {
+          if (!u.bought && u.currentCost > 0) {
+            const percent = Math.min(100, (state.points / u.currentCost) * 100);
+            progress.style.height = `${percent}%`;
+            progress.style.display = 'block';
+          } else {
+            progress.style.height = '0%';
+            progress.style.display = 'none';
+          }
         }
 
         let displayCost = u.currentCost === 0 ? "FREE" : `${Math.round(u.currentCost)}pts`;
@@ -1123,23 +1155,22 @@
           displayDesc = `Points boost itself at a rate of (pts/25+1)^0.2, currently x${curBoost.toFixed(2)}. 300pts.`;
         }
 
-        card.innerHTML = `
-          ${progressOverlay}
-          <div class="relative z-10 flex justify-between items-start">
-            <span class="text-[10px] font-bold ${textStyleClass}">#${u.id < 10 ? '0' + u.id : u.id}</span>
-          </div>
-          <p class="relative z-10 text-[9px] leading-tight font-bold my-1 text-left ${textStyleClass}">${displayDesc}</p>
-          <div class="relative z-10 text-right">
-            <span class="text-xs font-black tracking-wide ${textStyleClass}">${displayCost}</span>
-          </div>
-        `;
+        const descEl = card.querySelector('.card-desc');
+        if (descEl) {
+          descEl.textContent = displayDesc;
+          descEl.className = `card-desc relative z-10 text-[9px] leading-tight font-bold my-1 text-left ${textStyleClass}`;
+        }
 
-        card.addEventListener('click', () => {
-          if (state.planningMode) return; 
-          buyUpgrade(u.id);
-        });
+        const costEl = card.querySelector('.card-cost');
+        if (costEl) {
+          costEl.textContent = displayCost;
+          costEl.className = `card-cost text-xs font-black tracking-wide ${textStyleClass}`;
+        }
 
-        squaresGrid.appendChild(card);
+        const idEl = card.querySelector('.card-id');
+        if (idEl) {
+          idEl.className = `card-id text-[10px] font-bold ${textStyleClass}`;
+        }
       });
     }
 
@@ -1175,7 +1206,7 @@
           }
         });
 
-        renderGrid();
+        updateGridUI();
         renderCages();
         checkWinCondition();
       } else {
@@ -1204,7 +1235,7 @@
             4: "All upgrades bought, congratulations on winning the chained upgrades!",
             5: "All upgrades bought. Wow, you've defeated overlapping cages, you're doing amazing!",
             6: "All upgrades bought. Good luck for the final puzzle.",
-            7: "GG! You win! Thanks for playing!"
+            7: "GG! You win! Thanks for playing the Convergence!"
           };
           victoryMessage.textContent = messages[state.activeStage] || "Simulation configured perfectly.";
           victoryOverlay.classList.remove('hidden');
@@ -1232,11 +1263,11 @@
       const adjustedDt = dt * state.gameSpeed;
 
       if (!state.planningMode) {
-        const pps = calculatePointsPerSecond();
-        const eps = calculateEnergyPerSecond();
+        const pointBreakdown = getPointsBreakdown();
+        const energyBreakdown = getEnergyBreakdown();
 
-        state.points += pps * adjustedDt;
-        state.energy += eps * adjustedDt;
+        state.points += pointBreakdown.total * adjustedDt;
+        state.energy += energyBreakdown.total * adjustedDt;
 
         const config = STAGE_CONFIGS[state.activeStage];
         if (config.hasTimer && state.timerActive) {
@@ -1262,7 +1293,7 @@
           }
         });
 
-        renderGrid();
+        updateGridUI();
         updateHUD();
       }
 
@@ -1281,14 +1312,14 @@
       hudStatusMode.textContent = "ACTIVE RUN";
       hudPointsDisplay.classList.remove('hidden');
 
-      const pps = calculatePointsPerSecond();
-      hudPointsDisplay.textContent = `Points: ${Math.round(state.points)} (+${pps.toFixed(1)}/s)`;
+      const ptBreak = getPointsBreakdown();
+      hudPointsDisplay.textContent = `Points: ${Math.round(state.points)} (+${ptBreak.total.toFixed(1)}/s: ${ptBreak.base.toFixed(1)}/s Base, ${ptBreak.mult.toFixed(2)}x Mult)`;
 
       if (state.activeStage >= 3) {
         hudEnergyDisplay.classList.remove('hidden');
-        const eps = calculateEnergyPerSecond();
+        const enBreak = getEnergyBreakdown();
         const energyBoost = Math.pow(state.energy + 1, 0.2);
-        hudEnergyDisplay.textContent = `Energy: ${Math.round(state.energy)} (+${eps.toFixed(1)}/s) [Boost: x${energyBoost.toFixed(2)}]`;
+        hudEnergyDisplay.textContent = `Energy: ${Math.round(state.energy)} (+${enBreak.total.toFixed(1)}/s: ${enBreak.base.toFixed(1)}/s Base, ${enBreak.mult.toFixed(2)}x Mult) [Boost: x${energyBoost.toFixed(2)}]`;
       } else {
         hudEnergyDisplay.classList.add('hidden');
       }

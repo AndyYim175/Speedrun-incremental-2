@@ -186,7 +186,7 @@
         <button id="weight-thick" class="w-5 h-5 flex items-center justify-center text-[9px] font-bold border border-zinc-700 bg-transparent text-zinc-500">3</button>
       </div>
       <!-- Color Configs -->
-      <div class="flex items-center space-x-1.5">
+      <div class="flex items-center space-x-1.5 border-r border-zinc-800 pr-3">
         <span class="text-[9px] text-zinc-500 font-bold mr-1 font-mono">COLOR:</span>
         <button data-color="#ef4444" class="w-4 h-4 bg-red-500 border-2 border-white" title="Red"></button>
         <button data-color="#f97316" class="w-4 h-4 bg-orange-500 border-2 border-transparent" title="Orange"></button>
@@ -194,6 +194,15 @@
         <button data-color="#3b82f6" class="w-4 h-4 bg-blue-500 border-2 border-transparent" title="Blue"></button>
         <button data-color="#ffffff" class="w-4 h-4 bg-white border-2 border-transparent" title="White"></button>
       </div>
+      <!-- Doodle Undo -->
+      <button id="doodle-undo" class="px-2 py-1 text-[9px] font-bold border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all" title="Undo Last Scribbled Line">UNDO STROKE</button>
+    </div>
+
+    <!-- SEQUENCER TOOL SUB-MENU (Slides up when in sequence mode) -->
+    <div id="sequence-submenu" class="flex items-center space-x-4 bg-zinc-950 border border-zinc-800 px-3 py-1.5 transition-all duration-200 hidden">
+      <span class="text-[9px] text-zinc-500 font-bold font-mono">Settings:</span>
+      <button id="seq-undo" class="px-2 py-1 text-[9px] font-bold border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 active:scale-95 transition-all" title="Undo last upgrade added to sequence">Undo last step</button>
+      <button id="seq-clear" class="px-2 py-1 text-[9px] font-bold border border-zinc-700 bg-zinc-900 text-red-400 hover:bg-zinc-800 active:scale-95 transition-all" title="Clear full sequence">Clear</button>
     </div>
 
     <!-- MAIN BUTTON ROW -->
@@ -209,6 +218,13 @@
       <button id="tool-note" class="w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow" title="Scribble Strategy Notes">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </button>
+
+      <!-- NEW QoL: Auto Sequence Route Pointer Button -->
+      <button id="tool-sequence" class="w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow" title="Route Auto Sequence Builder">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
         </svg>
       </button>
 
@@ -228,6 +244,7 @@
     </div>
   </footer>
 
+  <!-- BRIEFING OVERLAYS -->
   <div id="briefing-overlay" class="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-6 hidden">
     <div class="max-w-2xl w-full bg-zinc-950 border border-zinc-800 p-8 space-y-6 shadow-2xl">
       <div class="flex justify-between items-center border-b border-zinc-800 pb-3">
@@ -278,9 +295,13 @@
       upgrades: [],
       ropes: [],
       
-      drawMode: 'drag', 
+      drawMode: 'drag', // 'drag', 'note', 'sequence'
       penColor: '#ef4444',
       penWeight: 2,
+      
+      // Auto-sequence router state
+      sequence: [], // Array of upgrade IDs in custom purchase order
+      sequenceIndex: 0, // Current queue target evaluation position
       
       camX: 0,
       camY: 0,
@@ -312,8 +333,10 @@
 
     const planningToolbar = document.getElementById('planning-toolbar');
     const penSubmenu = document.getElementById('pen-submenu');
+    const sequenceSubmenu = document.getElementById('sequence-submenu');
     const toolDrag = document.getElementById('tool-drag');
     const toolNote = document.getElementById('tool-note');
+    const toolSequence = document.getElementById('tool-sequence');
     const toolClear = document.getElementById('tool-clear');
     const executeRunBtn = document.getElementById('execute-run-btn');
     const resetStageBtn = document.getElementById('reset-stage-btn');
@@ -768,6 +791,10 @@
       state.timer = 60.0;
       lastSecondTick = 60;
 
+      // Reset auto-sequence queue state
+      state.sequence = [];
+      state.sequenceIndex = 0;
+
       const speedContainer = document.getElementById('speed-controls');
       const btn05 = document.getElementById('speed-05');
       const btn10 = document.getElementById('speed-10');
@@ -843,6 +870,7 @@
       state.points = 0;
       state.energy = 0;
       state.timer = 60.0;
+      state.sequenceIndex = 0;
       
       const config = STAGE_CONFIGS[state.activeStage];
       state.upgrades = config.upgrades.map(upg => ({
@@ -852,13 +880,14 @@
         inflationRate: upg.inflationRate || 1.0
       }));
 
+      // Reset auto-sequence queue on entering planning mode
+      state.sequence = [];
+
       // Make sure planning-toolbar transition targets are reset
       planningToolbar.classList.remove('hidden', 'translate-y-full', 'opacity-0');
-      squaresGrid.style.pointerEvents = 'none';
       
-      if (state.drawMode === 'note') {
-        penSubmenu.classList.remove('hidden');
-      }
+      // Default tool mode: reset to drag and close submenus
+      switchToolMode('drag');
 
       renderGrid();
       renderCages();
@@ -886,12 +915,12 @@
           <p class="font-bold text-amber-500 text-lg">STAGE 2: Timer</p>
           <p>From now on, each stage has a <span class="text-white font-bold">60.0s countdown timer</span>. Failing to buy all upgrades makes you lose (and having to restart the stage)!</p>
           <p>Take advantage of the newly unlocked <span class="text-amber-400 font-bold">Strategy Planning Mode</span> (available from now on)! You can draw lines, draft custom sequences, and highlight paths, noting things that might help you decide which upgrades to buy first.</p>
-          <p class="text-xs text-zinc-400 italic">Tip: Tap on the ✏️ Note tool to draw. You can choose colors and pen weights.</p>
+          <p class="text-xs text-zinc-400 italic">Tip: Tap on the ✏️ Note tool to draw. You can choose colors and pen weights. Tap on the arrow to auto-buy upgrades in a sequence!</p>
         `;
       } else if (stageNum === 3) {
         text = `
           <p class="font-bold text-amber-500 text-lg">STAGE 3: Energy</p>
-          <p>Planning is too easy for you? Time for a new sub-currency (and increase the complexity): <span class="text-emerald-400 font-bold">Energy</span>!</p>
+          <p>Planning is too easy? Time for a new sub-currency: <span class="text-emerald-400 font-bold">Energy</span>!</p>
           <p>Certain upgrades generate/multiply Energy. Energy boosts Point gain at the following rate:</p>
           <p class="text-center bg-zinc-900 border border-zinc-800 py-2 font-mono text-xs text-emerald-400">
             Mult = (Energy + 1)^0.2
@@ -928,7 +957,7 @@
         text = `
           <p class="font-bold text-amber-500 text-lg">STAGE 7: The Convergence</p>
           <p>Welcome to the final test! This stage contains quite a lot of moving parts.</p>
-          <p>This final stage brings together <span class="text-white font-bold">Cages</span>, <span class="text-red-500 font-bold">Inflating Upgrades</span>, and a <span class="text-amber-400 font-bold">Deflating Upgrade (#15)</span> whose cost drops over time (deflation rate x0.97/s).</p>
+          <p>This final simulation layer brings together <span class="text-white font-bold">Cages</span>, <span class="text-red-500 font-bold">Inflating Upgrades</span>, and a <span class="text-amber-400 font-bold">Deflating Upgrade (#15)</span> whose cost drops over time (deflation rate x0.97/s).</p>
           <p>Think about the multipliers and effects, and make every second count. Good luck on this final stage!</p>
         `;
       }
@@ -1085,6 +1114,9 @@
 
         card.innerHTML = `
           <div class="progress-bar absolute bottom-0 left-0 w-full bg-amber-500/10 pointer-events-none transition-all duration-100" style="height: 0%;"></div>
+          <!-- QoL Sequence Overlay Number -->
+          <div class="seq-num absolute inset-0 flex items-center justify-center text-zinc-500/20 text-5xl font-black font-mono select-none pointer-events-none hidden"></div>
+          
           <div class="relative z-10 flex justify-between items-start">
             <span class="card-id text-[10px] font-bold">#${u.id < 10 ? '0' + u.id : u.id}</span>
           </div>
@@ -1095,7 +1127,13 @@
         `;
 
         card.addEventListener('click', () => {
-          if (state.planningMode) return; 
+          if (state.planningMode) {
+            // Trigger customized sequence adder
+            if (state.drawMode === 'sequence') {
+              addToSequence(u.id);
+            }
+            return; 
+          }
           buyUpgrade(u.id);
         });
 
@@ -1104,6 +1142,36 @@
 
       // Execute immediate interface updates
       updateGridUI();
+    }
+
+    function addToSequence(id) {
+      if (!state.sequence.includes(id) && state.sequence.length < 16) {
+        state.sequence.push(id);
+        playBeep(600, 'sine', 0.08, 0.05);
+        updateGridUI();
+      }
+    }
+
+    function undoSequenceStep() {
+      if (state.sequence.length > 0) {
+        state.sequence.pop();
+        playBeep(300, 'sine', 0.08, 0.05);
+        updateGridUI();
+      }
+    }
+
+    function clearSequence() {
+      state.sequence = [];
+      playBeep(200, 'sine', 0.15, 0.05);
+      updateGridUI();
+    }
+
+    function undoDoodleStroke() {
+      if (savedDrawings.length > 0) {
+        savedDrawings.pop();
+        initializeDoodleCanvas();
+        playBeep(300, 'sine', 0.08, 0.05);
+      }
     }
 
     function updateGridUI() {
@@ -1146,6 +1214,18 @@
           } else {
             progress.style.height = '0%';
             progress.style.display = 'none';
+          }
+        }
+
+        // Update semi-transparent purchase order number
+        const seqNumEl = card.querySelector('.seq-num');
+        if (seqNumEl) {
+          const seqIndex = state.sequence.indexOf(u.id);
+          if (state.planningMode && seqIndex !== -1) {
+            seqNumEl.textContent = seqIndex + 1;
+            seqNumEl.classList.remove('hidden');
+          } else {
+            seqNumEl.classList.add('hidden');
           }
         }
 
@@ -1289,11 +1369,36 @@
           }
         }
 
+        // Apply inflation/deflation changes over active seconds
         state.upgrades.forEach(u => {
           if (!u.bought && u.inflationRate !== 1.0) {
             u.currentCost *= Math.pow(u.inflationRate, adjustedDt);
           }
         });
+
+        // EXECUTE AUTO SEQUENCE BUYER (Buy step by step per tick based on state.sequence queue)
+        if (state.sequence.length > 0) {
+          let sequenceActive = true;
+          while (sequenceActive && state.sequenceIndex < state.sequence.length) {
+            const nextTargetId = state.sequence[state.sequenceIndex];
+            const targetUpg = state.upgrades.find(u => u.id === nextTargetId);
+            if (targetUpg) {
+              if (targetUpg.bought) {
+                // If already purchased, skip to next target
+                state.sequenceIndex++;
+              } else if (state.points >= targetUpg.currentCost) {
+                // Affordable! Execute automated buy
+                buyUpgrade(nextTargetId);
+                state.sequenceIndex++;
+              } else {
+                // Cannot afford this step yet, stop sequence progression for this tick
+                sequenceActive = false;
+              }
+            } else {
+              state.sequenceIndex++;
+            }
+          }
+        }
 
         updateGridUI();
         updateHUD();
@@ -1335,28 +1440,55 @@
       }
     }
 
-    toolDrag.addEventListener('click', () => {
-      state.drawMode = 'drag';
-      toolDrag.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
-      toolNote.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
-      penSubmenu.classList.add('hidden');
-    });
-
-    toolNote.addEventListener('click', () => {
-      state.drawMode = 'note';
-      toolNote.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
-      toolDrag.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+    function switchToolMode(mode) {
+      state.drawMode = mode;
       
-      if (state.planningMode) {
-        penSubmenu.classList.remove('hidden');
+      // Default: lock standard interactions to allow whiteboard canvas touch
+      squaresGrid.style.pointerEvents = 'none';
+      
+      // Hide all contextual menus
+      penSubmenu.classList.add('hidden');
+      sequenceSubmenu.classList.add('hidden');
+
+      // Clear highlighted button rings
+      toolDrag.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+      toolNote.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+      toolSequence.className = "w-12 h-12 bg-zinc-950 border border-zinc-800 text-zinc-400 flex items-center justify-center hover:bg-zinc-900 hover:text-white transition-all shadow";
+
+      if (mode === 'drag') {
+        toolDrag.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
+      } else if (mode === 'note') {
+        toolNote.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
+        if (state.planningMode) {
+          penSubmenu.classList.remove('hidden');
+        }
+      } else if (mode === 'sequence') {
+        toolSequence.className = "w-12 h-12 bg-zinc-900 border-2 border-amber-500 text-amber-500 flex items-center justify-center hover:bg-zinc-800 transition-all shadow";
+        if (state.planningMode) {
+          // Unlock card panels click events
+          squaresGrid.style.pointerEvents = 'auto';
+          sequenceSubmenu.classList.remove('hidden');
+        }
       }
-    });
+
+      updateGridUI();
+    }
+
+    // Tool click bindings
+    toolDrag.addEventListener('click', () => switchToolMode('drag'));
+    toolNote.addEventListener('click', () => switchToolMode('note'));
+    toolSequence.addEventListener('click', () => switchToolMode('sequence'));
 
     toolClear.addEventListener('click', () => {
       savedDrawings = [];
       initializeDoodleCanvas();
       playBeep(220, 'sine', 0.1, 0.05);
     });
+
+    // Submenu Buttons Listeners
+    document.getElementById('seq-undo').addEventListener('click', undoSequenceStep);
+    document.getElementById('seq-clear').addEventListener('click', clearSequence);
+    document.getElementById('doodle-undo').addEventListener('click', undoDoodleStroke);
 
     executeRunBtn.addEventListener('click', () => {
       // Easing implementation: Slide toolbar downwards gracefully on Stage 2+
@@ -1376,8 +1508,11 @@
       state.energy = 0;
       state.timer = 60.0;
       lastSecondTick = 60;
+      state.sequenceIndex = 0;
 
+      // Close submenus and unlock panels pointer bounds
       penSubmenu.classList.add('hidden');
+      sequenceSubmenu.classList.add('hidden');
       squaresGrid.style.pointerEvents = 'auto'; 
 
       const config = STAGE_CONFIGS[state.activeStage];
